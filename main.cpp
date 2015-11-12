@@ -59,6 +59,35 @@ void change_pixel(Mat img){
     }
 }
 
+void skin_thres(Mat &img){
+    
+    int y =0;
+    int x =0;
+    Size size(640,480);
+    resize(img,img,size);
+    blur(img, img, Size(3, 3));
+    for(y = 0; y < img.rows; y++){
+        for(x = 0; x< img.cols; x++){
+            Vec3b color = img.at<Vec3b>(Point(x,y));
+            if(abs(color.val[0]-color.val[1]) < 20  && abs(color.val[2]-color.val[1])<20 
+            && abs(color.val[0]-color.val[2])<20 ){
+                color.val[0] = 0;
+                color.val[1] = 0;
+                color.val[2] = 0;
+                img.at<Vec3b>(Point(x,y)) = color; 
+            }
+            else{
+                color.val[0] = 255;
+                color.val[1] = 255;
+                color.val[2] = 255;
+                img.at<Vec3b>(Point(x,y)) = color; 
+            }
+        }
+    }
+    //namedWindow("skin", WINDOW_NORMAL);
+    //imshow("skin", img);
+}
+
 void skin_color(Mat img){
     int max = 0; 
     int min =255;
@@ -95,22 +124,13 @@ void skin_color(Mat img){
             min = 255;
         }
     }
+
                 
 }
 
-void threshold_image(Mat img, IplImage* img1){
+void threshold_image(Mat img, Mat draw){
 
-	// Get contours of image
-	Mat tmp_img;
-    IplImage* _pDistImage = cvCreateImage( cvGetSize( img1 ), IPL_DEPTH_32F, 1 );
-    _pDistImage->origin = img1->origin;
 
-	try{
-		cvtColor(img, tmp_img, CV_BGR2GRAY);
-		blur(tmp_img, tmp_img, Size(3, 3));
-	} catch (Exception e){
-		cout << e.msg << endl;
-	}
     
 	Mat canny_out;
     int max =0;
@@ -123,102 +143,36 @@ void threshold_image(Mat img, IplImage* img1){
 	vector<Vec4i> hierarchy;
     
     
-	Canny(tmp_img, canny_out, 100, 255);
+	Canny(img, canny_out, 100, 255);
 	try {
 		findContours(canny_out, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, Point(0,0));
 	} catch (Exception e){
 		cout << e.msg << endl;
 	}
-    
+
+    Scalar c = Scalar(255, 255, 255);
     for(int i =0; i< contours.size(); ++i){
-        if (contourArea(contours[i]) < 100){
-			continue;
-		}
+
+        if(contours[i].size() <100){
+            continue;
+        }
         if(contourArea(contours[i]) > max){
             max_ind =i;
             max = contourArea(contours[i]);
             
         }
+        /*
         for(int j =0 ;j < contours[i].size(); ++j){
             ifcontour[contours[i][j].x][contours[i][j].y] = true;
             contours1[0].push_back(contours[i][j]);
-        }
-
+        }*/
+        drawContours(draw, contours, i, c, 1, 8, hierarchy, 0, Point());
     }
-    Mat draw = Mat::zeros(canny_out.size(), CV_8UC3);
-    Scalar c = Scalar(255, 255, 255);
-    drawContours(draw, contours1, 0, c, 1, 8, hierarchy, 0, Point());
-    imshow("Contours", draw);
+   
     
-    //start from the largest part of the counter
-   /* Point start, current, prev;
-    static int dir[8][2] = {{0,-1},{1,-1},{1,0},{1,1},{0,1},{-1,1},{-1,0},{-1,-1}};
-    start.x = contours[max_ind][0].x;
-    start.y = contours[max_ind][0].y;
-    
-    int nContour = 0;
-    for ( prev = current = start ; ; )
-    {
-        //
-        // Choose direction
-        for ( int i = 0 ; i < 8 ; i ++ )
-        {
-            int newX = current.x + dir[i][0];
-            int newY = current.y + dir[i][1];
-            
-            if ( newX > 0 && newX < img1->width-1 &&
-                newY > 0 && newY < img1->height-1 &&
-                ( newX != current.x || newY != current.y ) &&
-                ( newX != prev.x || newY != prev.y ) &&
-                ifcontour[newX][newY] )
-            {
-                bool fEdge = false;
-                for ( int j = 0 ; j < 8 ; j ++ )
-                {
-                    int neighborX = newX + dir[j][0];
-                    int neighborY = newY + dir[j][1];
-                    if ( ifcontour[neighborX][neighborY]  )
-                    {
-                        fEdge = true;
-                        break;
-                    }
-                }
-                
-                if ( fEdge )
-                {
-                    //
-                    // Draw the contour point
-                    //
-                    cout<<1<<endl;
-                    cvCircle( _pDistImage, current, 1, CV_RGB(0,0,0), 1, 8, 0 );
-                    //                cvSet2D( dstImage, current.y, current.x, CV_RGB(0,255,0) );
-                    
-                    //
-                    // Move the point
-                    //
-                    prev = current;
-                    current.x = newX;
-                    current.y = newY;
-                    break;
-                }
-            }
-        }
-        
-        if ( current.x == start.x && current.y == start.y )
-        {
-            break;
-        }
-        
-        nContour ++;
-        if ( nContour == 10000 ) break;
-    }
-	
-	//for (int i = 0; i < contours1[0].size(); ++i){
-		
-		// Draw contour with random colour
+   
+    //imshow("Contours", draw);
 
-	//}*/
-    //Mat hand = cvarrToMat(_pDistImage);
     
 }
 
@@ -227,10 +181,25 @@ int main( int argc, char** argv )
 {
 
     IplImage* img = cvLoadImage("hand1.jpg",CV_LOAD_IMAGE_GRAYSCALE);
-    Mat src = imread("hand1.jpg", CV_LOAD_IMAGE_COLOR);
-    //threshold_image(src);
-    threshold_image(src,img);
+    Mat src = imread("hand3.jpg", CV_LOAD_IMAGE_COLOR);
+
+    Mat ori = src;
+    Size size(640,480);
+    resize(ori,ori,size);
     
+    Mat draw = Mat::zeros(ori.size(), CV_8UC3);
+    skin_thres(src);
+    
+    threshold_image(src,draw);
+    
+    
+    Mat im3(ori.rows, ori.cols+draw.cols, CV_8UC3);
+    Mat left(im3, Rect(0, 0, ori.cols, ori.rows));
+    ori.copyTo(left);
+    Mat right(im3, Rect(ori.cols, 0, draw.cols, draw.rows));
+    draw.copyTo(right);
+    imshow("im3", im3);
+     
     while(1){ //Create infinte loop for live streaming
         
         
