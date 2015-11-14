@@ -1,8 +1,9 @@
 #include <opencv2/opencv.hpp>
-#include <opencv2/core/core.hpp>
+#include <opencv2/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/imgproc.hpp>
 #include <iostream>
+#include "MixGaussian.h"
 
 using namespace cv;
 using namespace std;
@@ -17,10 +18,8 @@ struct contoursCmpY {
     }
 } contoursCmpY_;
 
-/* 
-  Draws an ellipse, used for testing webcam drawing
- */
-void MyEllipse( Mat img, double angle ){
+void MyEllipse( Mat img, double angle )
+{
     int thickness = 2;
     int lineType = 8;
     
@@ -35,9 +34,6 @@ void MyEllipse( Mat img, double angle ){
             lineType );
 }
 
-/*
-  Deprecated
- */
 void change_pixel(Mat img){
     for(int y=0;y<img.rows;y++)
     {
@@ -63,17 +59,12 @@ void change_pixel(Mat img){
     }
 }
 
-/* 
-  Skin thresholding model, turns image into binary image.
-   White = Skin;
-   Black = Not-skin;
- */
 void skin_thres(Mat &img){
-    int y = 0;
-    int x = 0;
+    
+    int y =0;
+    int x =0;
     Size size(640,480);
     resize(img,img,size);
-
     blur(img, img, Size(3, 3));
     for(y = 0; y < img.rows; y++){
         for(x = 0; x< img.cols; x++){
@@ -97,9 +88,6 @@ void skin_thres(Mat &img){
     //imshow("skin", img);
 }
 
-/*
-  Deprecated
- */
 void skin_color(Mat img){
     int max = 0; 
     int min =255;
@@ -140,67 +128,71 @@ void skin_color(Mat img){
                 
 }
 
-/*
-  Takes in an image "img" and draws it's major contours on the image "draw"
- */
-void skin_contours(Mat img, Mat draw){
+void threshold_image(Mat img, Mat draw){
+
+
+    
 	Mat canny_out;
     int max =0;
     int max_ind =0;
 	vector<vector<Point>> contours;
     vector<vector<Point>>  contours1;
-    vector<bool> ifcontour(img.cols, img.rows);
+    bool ifcontour[img.cols][img.rows];
+    cout<<img.rows<<" "<<img.cols<<endl;
     contours1.resize(1);
 	vector<Vec4i> hierarchy;
-
-	// Output image size for debugging
-	cout << "Image size: " << img.rows << " " << img.cols <<endl;
     
-	// Extract contours
+    
 	Canny(img, canny_out, 100, 255);
 	try {
 		findContours(canny_out, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, Point(0,0));
-	}catch (Exception e){
+	} catch (Exception e){
 		cout << e.msg << endl;
 	}
 
-	// Draw white contours
     Scalar c = Scalar(255, 255, 255);
     for(int i =0; i< contours.size(); ++i){
 
-		// Don't include contours that are tiny - noise
-        if(contours[i].size() < 50){
+        if(contours[i].size() <100){
             continue;
         }
-
-		// Record the largest contour
         if(contourArea(contours[i]) > max){
             max_ind =i;
             max = contourArea(contours[i]);
+            
         }
-
+        /*
+        for(int j =0 ;j < contours[i].size(); ++j){
+            ifcontour[contours[i][j].x][contours[i][j].y] = true;
+            contours1[0].push_back(contours[i][j]);
+        }*/
         drawContours(draw, contours, i, c, 1, 8, hierarchy, 0, Point());
     }
+   
+    
+   
+    //imshow("Contours", draw);
+
+    
 }
 
 
 int main( int argc, char** argv )
 {
-	// Load image
-    Mat src = imread("hand2.jpg", CV_LOAD_IMAGE_COLOR);
+
+    IplImage* img = cvLoadImage("hand1.jpg",CV_LOAD_IMAGE_GRAYSCALE);
+    Mat src = imread("hand3.jpg", CV_LOAD_IMAGE_COLOR);
 
     Mat ori = src;
     Size size(640,480);
-    resize(ori,ori,size);    
+    resize(ori,ori,size);
+    
     Mat draw = Mat::zeros(ori.size(), CV_8UC3);
+    skin_thres(src);
     
-	// Change to binary image, indicating skin
-	skin_thres(src);
-
-	// Draws skin contours to "draw"
-    skin_contours(src,draw);    
+    threshold_image(src,draw);
     
-	// Display regular image to contour side-by-side
+    
     Mat im3(ori.rows, ori.cols+draw.cols, CV_8UC3);
     Mat left(im3, Rect(0, 0, ori.cols, ori.rows));
     ori.copyTo(left);
@@ -208,20 +200,16 @@ int main( int argc, char** argv )
     draw.copyTo(right);
     imshow("im3", im3);
      
-	//Create infinte loop for live streaming 
-    while(1){        
+    while(1){ //Create infinte loop for live streaming
+        
+        
         //find_contour(img);
-
-		//Capture Keyboard stroke
-		int key = cvWaitKey(10);    
-
-		//If you hit ESC key loop will break
+       int key = cvWaitKey(10);     //Capture Keyboard stroke
         if (char(key) == 27){
-            break; 
+            break;      //If you hit ESC key loop will break.
         }
     }
 
-	//Destroy Window
-    cvDestroyWindow("Camera_Output"); 
+    cvDestroyWindow("Camera_Output"); //Destroy Window
     return 0;
 }
