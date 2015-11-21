@@ -1,3 +1,3 @@
 # EECS442
-final project
-this is the final project for eecs 442
+## Augmented Reality Inspection by Hand
+Yanqi Liu, Kyle Balousek, Max Smith
