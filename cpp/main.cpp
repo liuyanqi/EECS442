@@ -3,225 +3,177 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <iostream>
+#define _USE_MATH_DEFINES
+#include <math.h>
+#include <utility>
 
 using namespace cv;
 using namespace std;
-#define w  400
 
-struct contoursCmpY {
-    bool operator()(const Point &a,const Point &b) const {
-        if (a.y == b.y)
-            return a.x < b.x;
-        
-        return a.y < b.y;
-    }
-} contoursCmpY_;
+double ComputeAngle(const Point& a, const Point& b)
+{
+	double val = (a.dot(b) / (norm(Mat(a)) * norm(Mat(b))));
 
-/* 
-  Draws an ellipse, used for testing webcam drawing
- */
-void MyEllipse( Mat img, double angle ){
-    int thickness = 2;
-    int lineType = 8;
-    
-    ellipse( img,
-            Point( w/2, w/2 ),
-            Size( w/4, w/16 ),
-            angle,
-            0,
-            360,
-            Scalar( 255, 0, 0 ),
-            thickness,
-            lineType );
+	if (val >= 1.0)
+		return 0.0;
+	else if (val <= -1.0)
+		return 180;
+	else
+		return (180 / M_PI) * acos(val);
 }
 
-/*
-  Deprecated
- */
-void change_pixel(Mat img){
-    for(int y=0;y<img.rows;y++)
-    {
-        for(int x=0;x<img.cols;x++)
-        {
-            // get pixel
-            Vec3b color = img.at<Vec3b>(Point(x,y));
-            
-            if(color.val[2] > 50){
-                color.val[0] =0;
-                color.val[1] =0;
-                color.val[2] =0;
-            }
-            else{
-                color.val[0] = 255;
-                color.val[1] =255;
-                color.val[2] =255;
-            }
-            
-            // set pixel
-            img.at<Vec3b>(Point(x,y)) = color;
-        }
-    }
+pair<vector<Point>, vector<Point>> CurvedPoints(const vector<Point>& Contour, int Diff, double Theta)
+{
+	pair<vector<Point>, vector<Point>> Curves;
+	for (int i = Diff; i < Contour.size() - Diff; i++) {
+		Point a = Contour[i] - Contour[i + Diff];
+		Point b = Contour[i] - Contour[i - Diff];
+		double Angle = ComputeAngle(a,b);
+		if (Angle < Theta) {
+			Point3d a3d(a);
+			Point3d b3d(b);
+			Point3d Cross = a3d.cross(b3d);
+			if (Cross.z >= 0)
+				Curves.first.push_back(Contour[i]);
+			else
+				Curves.second.push_back(Contour[i]);
+		}
+	}
+	return Curves;
 }
 
-/* 
-  Skin thresholding model, turns image into binary image.
-   White = Skin;
-   Black = Not-skin;
- */
-void skin_thres(Mat &img){
-    int y = 0;
-    int x = 0;
-    Size size(640,480);
-    resize(img,img,size);
+vector<vector<Point>> GetContours(const Mat& Frame)
+{
+	vector<vector<Point>> Contours;
+	vector<vector<Point>> Desired;
+	vector<Vec4i> Hierarchy;
+	Mat CannyOutput;
 
-    blur(img, img, Size(3, 3));
-    for(y = 0; y < img.rows; y++){
-        for(x = 0; x< img.cols; x++){
-            Vec3b color = img.at<Vec3b>(Point(x,y));
-            if(abs(color.val[0]-color.val[1]) < 20  && abs(color.val[2]-color.val[1])<20 
-            && abs(color.val[0]-color.val[2])<20 ){
-                color.val[0] = 0;
-                color.val[1] = 0;
-                color.val[2] = 0;
-                img.at<Vec3b>(Point(x,y)) = color; 
-            }
-            else{
-                color.val[0] = 255;
-                color.val[1] = 255;
-                color.val[2] = 255;
-                img.at<Vec3b>(Point(x,y)) = color; 
-            }
-        }
-    }
-    //namedWindow("skin", WINDOW_NORMAL);
-    //imshow("skin", img);
-}
-
-/*
-  Deprecated
- */
-void skin_color(Mat img){
-    int max = 0; 
-    int min =255;
-    int i =0;
-    int y =0;
-    int x =0;
-    for(y=0;y<img.rows;y++)
-    {
-        for(x=0;x<img.cols;x++)
-        {
-           Vec3b color = img.at<Vec3b>(Point(x,y));
-            
-            if((color.val[0] >95) && (color.val[1]>40) && (color.val[2]>20) && (abs(color.val[0]-color.val[1])>15) && (color.val[0]>color.val[1]) && (color.val[0]>color.val[2])){
-                
-                for(i =0 ; i<3; i++){
-                    if(color.val[i] > max) max = color.val[i];
-                    if(color.val[i] < min) min = color.val[i];
-                }
-                if((max-min) > 15){
-                    color.val[0] =0;
-                    color.val[1] =0;
-                    color.val[2] =0;
-                    img.at<Vec3b>(Point(x,y)) = color; 
-                }
-            }
-            else {
-                color.val[0] =255;
-                color.val[1] =255;
-                color.val[2] =255;
-                img.at<Vec3b>(Point(x,y)) = color; 
-            }
-            
-            max =0;
-            min = 255;
-        }
-    }
-
-                
-}
-
-/*
-  Takes in an image "img" and draws it's major contours on the image "draw"
- */
-void skin_contours(Mat img, Mat draw){
-	Mat canny_out;
-    int max =0;
-    int max_ind =0;
-	vector<vector<Point>> contours;
-    vector<vector<Point>>  contours1;
-    vector<bool> ifcontour(img.cols, img.rows);
-    contours1.resize(1);
-	vector<Vec4i> hierarchy;
-
-	// Output image size for debugging
-	cout << "Image size: " << img.rows << " " << img.cols <<endl;
-    
-	// Extract contours
-	Canny(img, canny_out, 100, 255);
+	Canny(Frame, CannyOutput, 100, 255);
 	try {
-		findContours(canny_out, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, Point(0,0));
-	}catch (Exception e){
+		findContours(CannyOutput, Contours, Hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+	} catch (Exception& e){
 		cout << e.msg << endl;
 	}
 
-	// Draw white contours
-    Scalar c = Scalar(255, 255, 255);
-    for(int i =0; i< contours.size(); ++i){
+	for (int i = 0; i < Contours.size(); ++i){
+		if (Contours[i].size() > 100 && Hierarchy[i][3] == -1) {
+			Desired.push_back(Contours[i]);
+			//drawContours(ContourImg, Contours, i, Color, 1, 8, Hierarchy, 0, Point());
+		}
+	}
 
-		// Don't include contours that are tiny - noise
-        if(contours[i].size() < 50){
-            continue;
-        }
-
-		// Record the largest contour
-        if(contourArea(contours[i]) > max){
-            max_ind =i;
-            max = contourArea(contours[i]);
-        }
-
-        drawContours(draw, contours, i, c, 1, 8, hierarchy, 0, Point());
-    }
+	return Desired;
 }
 
-
-int main( int argc, char** argv )
+Mat SkinSegment(const Mat& Frame)
 {
-	// Load image
-    Mat src = imread("hand2.jpg", CV_LOAD_IMAGE_COLOR);
+	Scalar LowerBound(0, 133, 77);
+	Scalar UpperBound(255, 173, 127);
 
-    Mat ori = src;
-    Size size(640,480);
-    resize(ori,ori,size);    
-    Mat draw = Mat::zeros(ori.size(), CV_8UC3);
-    
-	// Change to binary image, indicating skin
-	skin_thres(src);
+	Mat BlurredFrame;
+	GaussianBlur(Frame, BlurredFrame, Size(3, 3), 100);
 
-	// Draws skin contours to "draw"
-    skin_contours(src,draw);    
-    
-	// Display regular image to contour side-by-side
-    Mat im3(ori.rows, ori.cols+draw.cols, CV_8UC3);
-    Mat left(im3, Rect(0, 0, ori.cols, ori.rows));
-    ori.copyTo(left);
-    Mat right(im3, Rect(ori.cols, 0, draw.cols, draw.rows));
-    draw.copyTo(right);
-    imshow("im3", im3);
-     
-	//Create infinte loop for live streaming 
-    while(1){        
-        //find_contour(img);
+	Mat Converted;
+	cvtColor(BlurredFrame, Converted, CV_BGR2YCrCb);
 
-		//Capture Keyboard stroke
-		int key = cvWaitKey(10);    
+	Mat Thresh;
+	inRange(Converted, LowerBound, UpperBound, Thresh);
 
-		//If you hit ESC key loop will break
-        if (char(key) == 27){
-            break; 
-        }
-    }
+	int KernelSize = 2;
+	Mat ErosionKernel = getStructuringElement(MORPH_ELLIPSE,
+		Size(2 * KernelSize + 1, 2 * KernelSize + 1),
+		Point(KernelSize, KernelSize));
 
-	//Destroy Window
-    cvDestroyWindow("Camera_Output"); 
-    return 0;
+	Mat Eroded;
+	erode(Thresh, Eroded, ErosionKernel);
+
+	KernelSize = 4;
+	Mat DilationKernel = getStructuringElement(MORPH_ELLIPSE,
+		Size(2 * KernelSize + 1, 2 * KernelSize + 1),
+		Point(KernelSize, KernelSize));
+
+	Mat Dilated;
+	dilate(Eroded, Dilated, DilationKernel);
+
+	medianBlur(Dilated, BlurredFrame, 9);
+	
+	return BlurredFrame;
+}
+
+int main(int argc, char** argv)
+{
+	VideoCapture VideoStream(CV_CAP_ANY);
+
+	if (!VideoStream.isOpened()) {
+		cout << "Error: Unable to open webcam.";
+		return 1;
+	}
+
+	while (true) {
+		Mat Frame;
+		VideoStream.read(Frame);
+		if (Frame.empty())
+			continue;
+
+		Mat Threshold = SkinSegment(Frame);
+		vector<vector<Point>> Contours = GetContours(Threshold);
+		vector<vector<Point>> CurvesUp;
+		vector<vector<Point>> CurvesDown;
+		for (auto& Contour : Contours) {
+			auto Pts = CurvedPoints(Contour, 20, 45);
+			CurvesUp.push_back(Pts.first);
+			CurvesDown.push_back(Pts.second);
+		}
+
+		for (auto& Component : CurvesUp) {
+			for (auto& Point : Component) {
+				circle(Frame, cvPoint(Point.x, Point.y), 5, CV_RGB(255, 0, 0), -1, 8, 0);
+			}
+		}
+
+		for (auto& Component : CurvesDown) {
+			for (auto& Point : Component) {
+				circle(Frame, cvPoint(Point.x, Point.y), 5, CV_RGB(0, 0, 255), -1, 8, 0);
+			}
+		}
+
+		/*
+		Mat ContourImg;
+		for (int i = 0; i < Contours.size(); i++)
+			drawContours(Frame, Contours, i, Scalar(255,255,255), 1, 8);
+		*/
+
+
+		vector<vector<Point>> Polys;
+		Polys.resize(Contours.size());
+		for (int i = 0; i < Contours.size(); i++) {
+			approxPolyDP(Contours[i], Polys[i], 1, true);
+		}
+
+		vector<vector<Point>> Hulls;
+		Hulls.resize(Polys.size());
+		for (int i = 0; i < Polys.size(); i++) {
+			convexHull(Polys[i], Hulls[i]);
+		}
+
+		for (int i = 0; i < Contours.size(); i++)
+			drawContours(Frame, Hulls, i, Scalar(255, 255, 255), 1, 8);
+		/*
+		for (auto& Hull : Hulls) {
+			for (auto& Point : Hull) {
+				circle(Frame, cvPoint(Point.x, Point.y), 5, CV_RGB(0, 255, 0), -1, 8, 0);
+			}
+		}
+		*/
+
+		//imshow("Webcam", Threshold);
+		imshow("Webcam", Frame);
+
+		int key = cvWaitKey(10);
+		if (char(key) == 27)
+			break;      // Break if ESC is pressed
+	}
+
+	return 0;
 }
