@@ -16,16 +16,24 @@ pair<vector<Point>, vector<Point>> CurvedPoints(const vector<Point>& Contour, in
 {
 	pair<vector<Point>, vector<Point>> Curves;
 	for (int i = Diff; i < Contour.size() - Diff; i++) {
-		Point a = Contour[i] - Contour[i + Diff];
-		Point b = Contour[i] - Contour[i - Diff];
-		Point c = Contour[i] - Contour[i - Diff];
-		Point d = Contour[i + Diff] - Contour[i];
-		double Angle = ComputeAngle(a, b);
-		if (Angle < Theta) {
-			Point3d c3d(c);
-			Point3d d3d(d);
-			Point3d Cross = c3d.cross(d3d);
-			if (Cross.z >= 0){
+		/*
+		int pp1_x = Contour[i - Diff].x - Contour[i].x;
+		int pp1_y = Contour[i - Diff].y - Contour[i].y;
+		int pp2_x = Contour[i + Diff].x - Contour[i].x;
+		int pp2_y = Contour[i + Diff].y - Contour[i].y;
+		*/
+		int pp1_x = Contour[i - Diff].x - Contour[i].x;
+		int pp1_y = Contour[i - Diff].y - Contour[i].y;
+		int pp2_x = Contour[i + Diff].x - Contour[i].x;
+		int pp2_y = Contour[i + Diff].y - Contour[i].y;
+
+
+		double Angle = (pp1_x * pp2_x + pp1_y * pp2_y)
+			/ (sqrt((float)pp1_x * pp1_x + pp1_y * pp1_y) * sqrt((float)pp2_x * pp2_x + pp2_y * pp2_y));
+
+		if (Angle > (M_PI / 180) * Theta) {
+			int dir = pp1_x * pp2_y - pp1_y * pp2_x;
+			if (Angle < M_PI && dir > 0){
 				Curves.first.push_back(Contour[i]);
 			}
 			else{
@@ -82,7 +90,7 @@ Mat SkinSegment(const Mat& Frame)
 	Mat Eroded;
 	erode(Thresh, Eroded, ErosionKernel);
 
-	KernelSize = 4;
+	KernelSize = 2;
 	Mat DilationKernel = getStructuringElement(MORPH_ELLIPSE,
 		Size(2 * KernelSize + 1, 2 * KernelSize + 1),
 		Point(KernelSize, KernelSize));
@@ -110,7 +118,7 @@ vector<Point> Cluster(const vector<Point>& Points, double DistThreshold)
 			Sum += Points[i + 1];
 			Count++;
 		} else {
-			if (Count > 0) {
+			if (Count > 5) {
 				Point Cluster;
 				Cluster.x = (double) Sum.x / Count;
 				Cluster.y = (double) Sum.y / Count;
