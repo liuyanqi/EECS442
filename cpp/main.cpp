@@ -179,12 +179,17 @@ int main(int argc, char** argv)
 
 		// (py – qy)x + (qx – px)y + (pxqy – qxpy) = 0
 
-		drawStraightLine(&Frame, Centroid, Closest, CV_RGB(100, 200, 50));
+		//drawStraightLine(&Frame, Centroid, Closest, CV_RGB(100, 200, 50));
 
-		Point3d Line;
-		Line.x = Centroid.y - Closest.y;
-		Line.y = Closest.x - Centroid.x;
-		Line.z = Centroid.x * Closest.y - Closest.x * Centroid.y;
+		Point3d line;
+        
+        int line_y = Centroid.y- Closest.y;
+        int line_x = Centroid.x - Closest.x;
+
+        
+		line.x = Centroid.y - Closest.y;
+		line.y = Closest.x - Centroid.x;
+		line.z = Centroid.x * Closest.y - Closest.x * Centroid.y;
 
 		Point3d Thumb(Thumb2d.x, Thumb2d.y, 0);
 
@@ -202,22 +207,77 @@ int main(int argc, char** argv)
 		*/
 
 		Point3d line2;
+        int line2_x = Centroid.x- Thumb.x;
+        int line2_y = Centroid.y - Thumb.y;
+
+        
 		line2.x = Centroid.y - Thumb.y;
 		line2.y = Thumb.x - Centroid.x;
 		line2.z = Centroid.x*Thumb.y - Thumb.x*Centroid.y;
 
 
-		Point3d proj = line2.dot(Line) / pow(norm(line2), 2) * Line;
+		//Point3d proj = line2.dot(Line) / pow(norm(line2), 2) * Line;
+        
+        int scalar = (line_x * line2_x + line_y *line2_y)/pow(norm(line),2);
+        
+        Point center;
+        center.x = scalar*line_x+ Centroid.x;
+        center.y = scalar*line_y+ Centroid.y;
+        
+        //circle(Frame, cvPoint(Closest.x, Closest.y), 5, CV_RGB(100, 200, 50), -1, 8, 0);
+        circle(Frame, cvPoint(center.x, center.y), 5, CV_RGB(255,0,0), -1, 8, 0);
+        
 
-		circle(Frame, cvPoint(Closest.x, Closest.y), 5, CV_RGB(100, 200, 50), -1, 8, 0);
+		//circle(Frame, cvPoint(Closest.x, Closest.y), 5, CV_RGB(100, 200, 50), -1, 8, 0);
 
+        static bool init;
+        static vector<Point> fingertip_prev;
+        if(init == false){
+            int key = cvWaitKey(10);
+            if(char(key) == 105){
+                sort(FingerPoints.begin(),FingerPoints.end(),compare_x);
+                cout<<"initialized"<<endl;
+                init = true;
+            }
+            
+        }
+        
+        //track figner tip
+        if(init){
+            if(FingerPoints.size() ==5 && fingertip_prev.size() ==5){
+                bool matched[5] = {0};
+                for(int i =0; i <FingerPoints.size(); i++){
+                    float minDist = 50;
+                    int minJ = -1;
+                    for(int j =0; j<fingertip_prev.size(); j++){
+                        float dist = sqrt(pow((float)FingerPoints[i].x - fingertip_prev[i].x,2)+
+                                          pow((float)FingerPoints[i].y - fingertip_prev[i].y,2));
+                        if(!matched[j] && dist< minDist){
+                            minDist = dist;
+                            minJ = j;
+                        }
+                    }
+                    if(minJ >=0){
+                        //if exist a match, update 
+                        matched[minJ] = true;
+                        drawStraightLine(&Frame, FingerPoints[i], fingertip_prev[minJ], CV_RGB(255, 0, 0));
+                    }
+                }
+            }
+            
+            
+            //current frame = previous frame
+            for(int i =0; i< FingerPoints.size(); i++){
+                fingertip_prev.push_back(FingerPoints[i]);
+            }
+        }
 
 
 		
 		
 		
-		circle(Frame, cvPoint(proj.x, proj.y), 5, CV_RGB(255, 0, 0), -1, 8, 0);
-		//circle(Frame, cvPoint(Thumb2d.x, Thumb2d.y), 5, CV_RGB(0, 0, 255), -1, 8, 0);
+		//circle(Frame, cvPoint(proj.x, proj.y), 5, CV_RGB(255, 0, 0), -1, 8, 0);
+		circle(Frame, cvPoint(Thumb2d.x, Thumb2d.y), 5, CV_RGB(0, 0, 255), -1, 8, 0);
 		//circle(Frame, cvPoint(Sum.x, Sum.y), 5, CV_RGB(0, 255, 0), -1, 8, 0);
 		//line(Frame, Center, Closest, CV_RGB(255, 0, 0));
 		//line(Frame, Center, h.getThumb(), CV_RGB(255, 0, 0));
