@@ -1,45 +1,7 @@
 #include "HandSeg.h"
 #include "Hand.h"
+#include "PoseEstimator.h"
 #include "opencv2/calib3d/calib3d.hpp"
-
-struct intercept{
-	int x;
-	int y;
-	double distance;
-};
-
-struct compare_x{
-	bool operator() (Point i, Point j) { return (i.x > j.x); }
-} compare_x;
-
-struct myclass {
-	bool operator() (intercept i, intercept j) { return (i.distance<j.distance); }
-} myobject;
-
-void drawStraightLine(cv::Mat *img, cv::Point2f p1, cv::Point2f p2, cv::Scalar color)
-{
-	Point2f p, q;
-	// Check if the line is a vertical line because vertical lines don't have slope
-	if (p1.x != p2.x)
-	{
-		p.x = 0;
-		q.x = img->cols;
-		// Slope equation (y1 - y2) / (x1 - x2)
-		float m = (p1.y - p2.y) / (p1.x - p2.x);
-		// Line equation:  y = mx + b
-		float b = p1.y - (m * p1.x);
-		p.y = m * p.x + b;
-		q.y = m * q.x + b;
-	}
-	else
-	{
-		p.x = q.x = p2.x;
-		p.y = 0;
-		q.y = img->rows;
-	}
-
-	cv::line(*img, p, q, color, 1);
-}
 
 int main(int argc, char** argv)
 {
@@ -70,39 +32,6 @@ int main(int argc, char** argv)
 			ClustersDown.push_back(Cluster(Pts.first, 20));
 		}
 
-		/*
-		for (auto& Component : CurvesUp) {
-			for (auto& Point : Component) {
-				circle(Frame, cvPoint(Point.x, Point.y), 2, CV_RGB(255, 0, 0), -1, 8, 0);
-			}
-		}
-		
-		for (auto& Component : CurvesDown) {
-			for (auto& Point : Component) {
-				circle(Frame, cvPoint(Point.x, Point.y), 2, CV_RGB(0, 0, 255), -1, 8, 0);
-			}
-		}
-		
-		for (auto& Component : ClustersUp) {
-			for (auto& Point : Component) {
-				circle(Frame, cvPoint(Point.x, Point.y), 5, CV_RGB(0, 0, 0), -1, 8, 0);
-			}
-		}
-		
-		for (auto& Component : ClustersDown) {
-			for (auto& Point : Component) {
-				circle(Frame, cvPoint(Point.x, Point.y), 5, CV_RGB(0, 0, 0), -1, 8, 0);
-			}
-		}
-		*/
-		
-		/*
-		Mat ContourImg;
-		for (int i = 0; i < Contours.size(); i++)
-			drawContours(Frame, Contours, i, Scalar(255,255,255), 1, 8);
-		*/
-
-
 		vector<vector<Point>> Polys;
 		Polys.resize(Contours.size());
 		for (int i = 0; i < Contours.size(); i++) {
@@ -126,235 +55,82 @@ int main(int argc, char** argv)
 			Sum = Sum * (1 / static_cast<double>(Hulls[0].size()));
 		}
 
-
-
-		int min_dis = 255;
-		int point_x = 0;
-		int point_y = 0;
-		vector<intercept> all_dist;
-
-		for (auto& Component : ClustersUp) {
-			for (auto& Point : Component) {
-
-				for (auto& Hull : Hulls) {
-					for (auto& Point_Hull : Hull) {
-						double dist = pow((Point.x - Point_Hull.x), 2) + pow((Point.y - Point_Hull.y), 2);
-						if (dist < min_dis){
-							min_dis = dist;
-							point_x = Point.x;
-							point_y = Point.y;
-						}
-
-					}
-				}
-				intercept new_inter;
-				new_inter.x = point_x;
-				new_inter.y = point_y;
-				new_inter.distance = min_dis;
-				all_dist.push_back(new_inter);
-				min_dis = 255;
-			}
-		}
-		sort(all_dist.begin(), all_dist.end(), myobject);
-
 		vector<Point> FingerPoints;
 
-		if (!all_dist.empty()){
-			for (int i = 0; i< all_dist.size(); i++){
-				if (FingerPoints.size() == 5) break;
-
-				if (all_dist[i].y > 450 || all_dist[i].x <20 || all_dist[i].x > 620) continue;
-				FingerPoints.push_back(Point(all_dist[i].x, all_dist[i].y));
-				circle(Frame, cvPoint(all_dist[i].x, all_dist[i].y), 5, CV_RGB(0, 0, 0), -1, 8, 0);
+		Point Closest;
+		vector<pair<Point, double>> Distances;
+		double minDist = numeric_limits<double>::max();
+		for (auto& Component : ClustersUp) {
+			for (auto& Point : Component) {
+				//circle(Frame, cvPoint(Point.x, Point.y), 5, CV_RGB(255, 0, 0), -1, 8, 0);
+				for (auto& Hull : Hulls) {
+					for (auto& HullPoint : Hull) {
+						double Distance = pow((Point.x - HullPoint.x), 2) + pow((Point.y - HullPoint.y), 2);
+						if (Distance < minDist){
+							minDist = Distance;
+							Closest = Point;
+						}
+					}
+				}
+				Distances.push_back(make_pair(Closest, minDist));
+				minDist = numeric_limits<double>::max();
 			}
+		}
+
+		auto ComparePoints = [](pair<Point, double>& a, pair<Point, double>& b) { return a.second < b.second; };
+		sort(Distances.begin(), Distances.end(), ComparePoints);
+
+		for (int i = 0; i < Distances.size(); i++){
+			if (FingerPoints.size() == 5 || Distances[i].second > 2000) break;
+			if (Distances[i].first.y > 450 || Distances[i].first.x < 20 || Distances[i].first.x > 620) continue;
+			FingerPoints.push_back(Distances[i].first);
 		}
 
 		Hand h(FingerPoints);
-		Point Thumb2d = h.getThumb();
-		Point Centroid = h.getCentroid();
+		Point Thumb = h.getThumb();
 
-		Point Closest;
-		double closestDist = std::numeric_limits<double>::max();
-		for (int i = 0; i < FingerPoints.size(); i++) {
-			if (norm(Centroid - FingerPoints[i]) < closestDist) {
-				Closest = FingerPoints[i];
-				closestDist = norm(Centroid - FingerPoints[i]);
-			}
+		vector<pair<Point, double>> OrderedFingers;
+		for (auto& Finger : FingerPoints) {
+			OrderedFingers.push_back(make_pair(Finger, norm(Finger - Thumb)));
 		}
 
-		// (py – qy)x + (qx – px)y + (pxqy – qxpy) = 0
+		sort(OrderedFingers.begin(), OrderedFingers.end(), ComparePoints);
 
-		//drawStraightLine(&Frame, Centroid, Closest, CV_RGB(100, 200, 50));
+		for (int i = 0; i < FingerPoints.size(); i++) {
+			FingerPoints[i] = OrderedFingers[i].first;
+		}
 
-		Point3d line;
-        
-        int line_y = Centroid.y- Closest.y;
-        int line_x = Centroid.x - Closest.x;
+		vector<Point3d> object;
+		object.push_back(Point3d(0, 0, 10));
+		object.push_back(Point3d(0, 0, 20));
+		object.push_back(Point3d(0, 0, 30));
+		object.push_back(Point3d(0, 10, 0));
+		object.push_back(Point3d(0, 20, 0));
+		object.push_back(Point3d(0, 30, 0));
+		object.push_back(Point3d(10, 0, 0));
+		object.push_back(Point3d(20, 0, 0));
+		object.push_back(Point3d(30, 0, 0));
 
-        
-		line.x = Centroid.y - Closest.y;
-		line.y = Closest.x - Centroid.x;
-		line.z = Centroid.x * Closest.y - Closest.x * Centroid.y;
+		PoseEstimator Pose;
+		Pose.UpdateProjectionMatrix(FingerPoints);
+		vector<Point2d> ImageCoordinates = Pose.GetImageCoordinates(object);
 
-		Point3d Thumb(Thumb2d.x, Thumb2d.y, 0);
+		if (FingerPoints.size() == 5) {
+			circle(Frame, cvPoint(FingerPoints[0].x, FingerPoints[0].y), 5, CV_RGB(0, 128, 0), -1, 8, 0);
+			circle(Frame, cvPoint(FingerPoints[1].x, FingerPoints[1].y), 5, CV_RGB(0, 255, 0), -1, 8, 0);
+			circle(Frame, cvPoint(FingerPoints[2].x, FingerPoints[2].y), 5, CV_RGB(0, 0, 128), -1, 8, 0);
+			circle(Frame, cvPoint(FingerPoints[3].x, FingerPoints[3].y), 5, CV_RGB(0, 0, 255), -1, 8, 0);
+			circle(Frame, cvPoint(FingerPoints[4].x, FingerPoints[4].y), 5, CV_RGB(255, 0, 0), -1, 8, 0);
+		}
 
-		//k = ((y2 - y1) * (x3 - x1) - (x2 - x1) * (y3 - y1)) / ((y2 - y1) ^ 2 + (x2 - x1) ^ 2)
-		//	x4 = x3 - k * (y2 - y1)
-		//	y4 = y3 + k * (x2 - x1)
+		if (!ImageCoordinates.empty()) {
+			for (auto& Pt : ImageCoordinates)
+				circle(Frame, cvPoint(Pt.x, Pt.y), 3, CV_RGB(0, 0, 255), -1, 8, 0);
+		}
+		//circle(Frame, cvPoint(Thumb.x, Thumb.y), 5, CV_RGB(0, 0, 255), -1, 8, 0);
 
-		/*
-		double k = ((Centroid.y - Closest.y) * (Thumb.x - Closest.x) - (Centroid.x - Closest.x) * (Thumb.y - Closest.y)) /
-			(pow(norm(Centroid.y - Closest.y), 2) + pow(norm(Centroid.x - Closest.x), 2));
-		double x_pos = Thumb.x - k * (Centroid.y - Closest.y);
-		double y_pos = Thumb.y - k * (Centroid.x - Closest.x);
-		Point Center((int)x_pos, (int)y_pos);
-		cout << Center << endl;
-		*/
-
-		Point3d line2;
-        int line2_x = Centroid.x- Thumb.x;
-        int line2_y = Centroid.y - Thumb.y;
-
-        
-		line2.x = Centroid.y - Thumb.y;
-		line2.y = Thumb.x - Centroid.x;
-		line2.z = Centroid.x*Thumb.y - Thumb.x*Centroid.y;
-
-
-		//Point3d proj = line2.dot(Line) / pow(norm(line2), 2) * Line;
-        
-        int scalar = (line_x * line2_x + line_y *line2_y)/pow(norm(line),2);
-        
-        Point center;
-        center.x = scalar*line_x+ Centroid.x;
-        center.y = scalar*line_y+ Centroid.y;
-        
-        //circle(Frame, cvPoint(Closest.x, Closest.y), 5, CV_RGB(100, 200, 50), -1, 8, 0);
-        circle(Frame, cvPoint(center.x, center.y), 5, CV_RGB(255,0,0), -1, 8, 0);
-        
-
-		//circle(Frame, cvPoint(Closest.x, Closest.y), 5, CV_RGB(100, 200, 50), -1, 8, 0);
-
-        static bool init;
-        static vector<Point> fingertip_prev;
-        if(init == false){
-            int key = cvWaitKey(10);
-            if(char(key) == 105){
-                sort(FingerPoints.begin(),FingerPoints.end(),compare_x);
-                cout<<"initialized"<<endl;
-                init = true;
-            }
-            
-        }
-        
-        //track figner tip
-        if(init){
-            if(FingerPoints.size() ==5 && fingertip_prev.size() ==5){
-                bool matched[5] = {0};
-                for(int i =0; i <FingerPoints.size(); i++){
-                    float minDist = 50;
-                    int minJ = -1;
-                    for(int j =0; j<fingertip_prev.size(); j++){
-                        float dist = sqrt(pow((float)FingerPoints[i].x - fingertip_prev[i].x,2)+
-                                          pow((float)FingerPoints[i].y - fingertip_prev[i].y,2));
-                        if(!matched[j] && dist< minDist){
-                            minDist = dist;
-                            minJ = j;
-                        }
-                    }
-                    if(minJ >=0){
-                        //if exist a match, update 
-                        matched[minJ] = true;
-                        drawStraightLine(&Frame, FingerPoints[i], fingertip_prev[minJ], CV_RGB(255, 0, 0));
-                    }
-                }
-            }
-            
-            
-            //current frame = previous frame
-            for(int i =0; i< FingerPoints.size(); i++){
-                fingertip_prev.push_back(FingerPoints[i]);
-            }
-        }
-		/*
-		Camera_Matrix: !!opencv-matrix
-   rows: 3
-   cols: 3
-   dt: d
-   data: [ 6.5746697810243404e+002, 0., 3.1950000000000000e+002, 0.,
-       6.5746697810243404e+002, 2.3950000000000000e+002, 0., 0., 1. ]
-Distortion_Coefficients: !!opencv-matrix
-   rows: 5
-   cols: 1
-   dt: d
-   data: [ -4.1802327018241026e-001, 5.0715243805833121e-001, 0., 0.,
-       -5.7843596847939704e-001 ]
-	   */
-
-		Mat intrisicMat = Mat::zeros(3, 3, CV_64FC1);
-		intrisicMat.at<double>(0, 0) = 1;
-		intrisicMat.at<double>(1, 0) = 0;
-		intrisicMat.at<double>(2, 0) = 0;
-
-		intrisicMat.at<double>(0, 1) = 0;
-		intrisicMat.at<double>(1, 1) = 1;
-		intrisicMat.at<double>(2, 1) = 0;
-
-		intrisicMat.at<double>(0, 2) = 0;
-		intrisicMat.at<double>(1, 2) = 0;
-		intrisicMat.at<double>(2, 2) = 1;
-
-
-
-		Mat distCoeffs(5, 1, cv::DataType<double>::type);   // Distortion vector
-		distCoeffs.at<double>(0) = 0;
-		distCoeffs.at<double>(1) = 0;
-		distCoeffs.at<double>(2) = 0;
-		distCoeffs.at<double>(3) = 0;
-		distCoeffs.at<double>(4) = 0;
-
-		vector<Point3f> ftips;
-		ftips.push_back(Point3f(-95, 0, 5));
-		ftips.push_back(Point3f(-53, 90, 5));
-		ftips.push_back(Point3f(0, 105, 5));
-		ftips.push_back(Point3f(49, 95, 5));
-		ftips.push_back(Point3f(89, 57, 5));
-
-		Mat R_matrix = Mat::zeros(3, 3, CV_64FC1);   // rotation matrix
-		Mat t_matrix = Mat::zeros(3, 1, CV_64FC1);   // translation matrix
-		Mat P_matrix = Mat::zeros(3, 4, CV_64FC1);
-
-        vector<Point2f> fingerpoints_2f;
-        
-        for(int i =0; i< FingerPoints.size(); i++){
-            Point2f new_point;
-            new_point.x = FingerPoints[i].x;
-            new_point.y = FingerPoints[i].y;
-            fingerpoints_2f.push_back(new_point);
-        }
-
-        if(fingerpoints_2f.size()==ftips.size()){
-        cout<<"here"<<endl;
-        solvePnPRansac(ftips, fingerpoints_2f, intrisicMat, distCoeffs, R_matrix, t_matrix, false);
-        
-			cout << R_matrix << endl;
-			//cout << t_matrix << endl;
-			//cout << P_matrix << endl;
-        }
-
-		
-
-		
-		
-		
-		//circle(Frame, cvPoint(proj.x, proj.y), 5, CV_RGB(255, 0, 0), -1, 8, 0);
-		circle(Frame, cvPoint(Thumb2d.x, Thumb2d.y), 5, CV_RGB(0, 0, 255), -1, 8, 0);
-		//circle(Frame, cvPoint(Sum.x, Sum.y), 5, CV_RGB(0, 255, 0), -1, 8, 0);
-		//line(Frame, Center, Closest, CV_RGB(255, 0, 0));
-		//line(Frame, Center, h.getThumb(), CV_RGB(255, 0, 0));
-
-		//imshow("Webcam", Threshold);
-		imshow("Webcam2", Frame);
+		imshow("thresh", Threshold);
+		imshow("Webcam", Frame);
 
 		int key = cvWaitKey(10);
 		if (char(key) == 27)
@@ -363,3 +139,141 @@ Distortion_Coefficients: !!opencv-matrix
 
 	return 0;
 }
+
+
+
+
+
+/*
+
+static bool init;
+static vector<Point> fingertip_prev;
+if(init == false){
+int key = cvWaitKey(10);
+if(char(key) == 105){
+sort(FingerPoints.begin(),FingerPoints.end(),compare_x);
+cout<<"initialized"<<endl;
+init = true;
+}
+
+}
+
+//track figner tip
+if(init){
+if(FingerPoints.size() ==5 && fingertip_prev.size() ==5){
+bool matched[5] = {0};
+for(int i =0; i <FingerPoints.size(); i++){
+float minDist = 50;
+int minJ = -1;
+for(int j =0; j<fingertip_prev.size(); j++){
+float dist = sqrt(pow((float)FingerPoints[i].x - fingertip_prev[i].x,2)+
+pow((float)FingerPoints[i].y - fingertip_prev[i].y,2));
+if(!matched[j] && dist< minDist){
+minDist = dist;
+minJ = j;
+}
+}
+if(minJ >=0){
+//if exist a match, update
+matched[minJ] = true;
+drawStraightLine(&Frame, FingerPoints[i], fingertip_prev[minJ], CV_RGB(255, 0, 0));
+}
+}
+}
+
+
+//current frame = previous frame
+for(int i =0; i< FingerPoints.size(); i++){
+fingertip_prev.push_back(FingerPoints[i]);
+}
+}
+
+
+*/
+
+/*
+int min_dis = 255;
+int point_x = 0;
+int point_y = 0;
+vector<intercept> all_dist;
+
+for (auto& Component : ClustersUp) {
+for (auto& Point : Component) {
+
+for (auto& Hull : Hulls) {
+for (auto& Point_Hull : Hull) {
+double dist = pow((Point.x - Point_Hull.x), 2) + pow((Point.y - Point_Hull.y), 2);
+if (dist < min_dis){
+min_dis = dist;
+point_x = Point.x;
+point_y = Point.y;
+}
+
+}
+}
+intercept new_inter;
+new_inter.x = point_x;
+new_inter.y = point_y;
+new_inter.distance = min_dis;
+all_dist.push_back(new_inter);
+min_dis = 255;
+}
+}
+sort(all_dist.begin(), all_dist.end(), myobject);
+
+vector<Point> FingerPoints;
+
+if (!all_dist.empty()){
+for (int i = 0; i< all_dist.size(); i++){
+if (FingerPoints.size() == 5) break;
+
+if (all_dist[i].y > 450 || all_dist[i].x <20 || all_dist[i].x > 620) continue;
+FingerPoints.push_back(Point(all_dist[i].x, all_dist[i].y));
+circle(Frame, cvPoint(all_dist[i].x, all_dist[i].y), 5, CV_RGB(0, 0, 0), -1, 8, 0);
+}
+}
+
+*/
+
+/*
+
+struct intercept{
+int x;
+int y;
+double distance;
+};
+
+struct compare_x{
+bool operator() (Point i, Point j) { return (i.x > j.x); }
+} compare_x;
+
+struct myclass {
+bool operator() (intercept i, intercept j) { return (i.distance<j.distance); }
+} myobject;
+
+void drawStraightLine(cv::Mat *img, cv::Point2f p1, cv::Point2f p2, cv::Scalar color)
+{
+Point2f p, q;
+// Check if the line is a vertical line because vertical lines don't have slope
+if (p1.x != p2.x)
+{
+p.x = 0;
+q.x = img->cols;
+// Slope equation (y1 - y2) / (x1 - x2)
+float m = (p1.y - p2.y) / (p1.x - p2.x);
+// Line equation:  y = mx + b
+float b = p1.y - (m * p1.x);
+p.y = m * p.x + b;
+q.y = m * q.x + b;
+}
+else
+{
+p.x = q.x = p2.x;
+p.y = 0;
+q.y = img->rows;
+}
+
+cv::line(*img, p, q, color, 1);
+}
+
+*/
