@@ -1,11 +1,16 @@
 #include "HandSeg.h"
 #include "Hand.h"
+#include "opencv2/calib3d/calib3d.hpp"
 
 struct intercept{
 	int x;
 	int y;
 	double distance;
 };
+
+struct compare_x{
+	bool operator() (Point i, Point j) { return (i.x > j.x); }
+} compare_x;
 
 struct myclass {
 	bool operator() (intercept i, intercept j) { return (i.distance<j.distance); }
@@ -271,7 +276,66 @@ int main(int argc, char** argv)
                 fingertip_prev.push_back(FingerPoints[i]);
             }
         }
+		/*
+		Camera_Matrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [ 6.5746697810243404e+002, 0., 3.1950000000000000e+002, 0.,
+       6.5746697810243404e+002, 2.3950000000000000e+002, 0., 0., 1. ]
+Distortion_Coefficients: !!opencv-matrix
+   rows: 5
+   cols: 1
+   dt: d
+   data: [ -4.1802327018241026e-001, 5.0715243805833121e-001, 0., 0.,
+       -5.7843596847939704e-001 ]
+	   */
 
+		Mat intrisicMat = Mat::zeros(3, 3, CV_64FC1);
+		intrisicMat.at<double>(0, 0) = 6.5746697810243404e+002;
+		intrisicMat.at<double>(1, 0) = 0;
+		intrisicMat.at<double>(2, 0) = 0;
+
+		intrisicMat.at<double>(0, 1) = 0;
+		intrisicMat.at<double>(1, 1) = 1.7067753507885654e+003;
+		intrisicMat.at<double>(2, 1) = 0;
+
+		intrisicMat.at<double>(0, 2) = 3.1950000000000000e+002;
+		intrisicMat.at<double>(1, 2) = 2.3950000000000000e+002;
+		intrisicMat.at<double>(2, 2) = 1;
+
+
+
+		Mat distCoeffs(5, 1, cv::DataType<double>::type);   // Distortion vector
+		distCoeffs.at<double>(0) = -4.1802327018241026e-001;
+		distCoeffs.at<double>(1) = 5.0715243805833121e-001;
+		distCoeffs.at<double>(2) = 0;
+		distCoeffs.at<double>(3) = 0;
+		distCoeffs.at<double>(4) = -5.7843596847939704e-001;
+
+		vector<Point3f> ftips;
+		ftips.push_back(Point3f(-95, 0, 5));
+		ftips.push_back(Point3f(-53, 90, 5));
+		ftips.push_back(Point3f(0, 105, 5));
+		ftips.push_back(Point3f(49, 95, 5));
+		ftips.push_back(Point3f(89, 57, 5));
+
+		Mat R_matrix = Mat::zeros(3, 3, CV_64FC1);   // rotation matrix
+		Mat t_matrix = Mat::zeros(3, 1, CV_64FC1);   // translation matrix
+		Mat P_matrix = Mat::zeros(3, 4, CV_64FC1);
+
+		
+
+		if (FingerPoints.size() == 5) {
+
+			solvePnPRansac(ftips, FingerPoints, intrisicMat, distCoeffs, R_matrix, t_matrix, false);
+
+			//cout << R_matrix << endl;
+			//cout << t_matrix << endl;
+			//cout << P_matrix << endl;
+		}
+
+		
 
 		
 		
