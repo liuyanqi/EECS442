@@ -292,26 +292,26 @@ Distortion_Coefficients: !!opencv-matrix
 	   */
 
 		Mat intrisicMat = Mat::zeros(3, 3, CV_64FC1);
-		intrisicMat.at<double>(0, 0) = 6.5746697810243404e+002;
+		intrisicMat.at<double>(0, 0) = 1;
 		intrisicMat.at<double>(1, 0) = 0;
 		intrisicMat.at<double>(2, 0) = 0;
 
 		intrisicMat.at<double>(0, 1) = 0;
-		intrisicMat.at<double>(1, 1) = 1.7067753507885654e+003;
+		intrisicMat.at<double>(1, 1) = 1;
 		intrisicMat.at<double>(2, 1) = 0;
 
-		intrisicMat.at<double>(0, 2) = 3.1950000000000000e+002;
-		intrisicMat.at<double>(1, 2) = 2.3950000000000000e+002;
+		intrisicMat.at<double>(0, 2) = 0;
+		intrisicMat.at<double>(1, 2) = 0;
 		intrisicMat.at<double>(2, 2) = 1;
 
 
 
 		Mat distCoeffs(5, 1, cv::DataType<double>::type);   // Distortion vector
-		distCoeffs.at<double>(0) = -4.1802327018241026e-001;
-		distCoeffs.at<double>(1) = 5.0715243805833121e-001;
+		distCoeffs.at<double>(0) = 0;
+		distCoeffs.at<double>(1) = 0;
 		distCoeffs.at<double>(2) = 0;
 		distCoeffs.at<double>(3) = 0;
-		distCoeffs.at<double>(4) = -5.7843596847939704e-001;
+		distCoeffs.at<double>(4) = 0;
 
 		vector<Point3f> ftips;
 		ftips.push_back(Point3f(-95, 0, 5));
@@ -324,16 +324,23 @@ Distortion_Coefficients: !!opencv-matrix
 		Mat t_matrix = Mat::zeros(3, 1, CV_64FC1);   // translation matrix
 		Mat P_matrix = Mat::zeros(3, 4, CV_64FC1);
 
-		
+        vector<Point2f> fingerpoints_2f;
+        
+        for(int i =0; i< FingerPoints.size(); i++){
+            Point2f new_point;
+            new_point.x = FingerPoints[i].x;
+            new_point.y = FingerPoints[i].y;
+            fingerpoints_2f.push_back(new_point);
+        }
 
-		if (FingerPoints.size() == 5) {
-
-			solvePnPRansac(ftips, FingerPoints, intrisicMat, distCoeffs, R_matrix, t_matrix, false);
-
-			//cout << R_matrix << endl;
+        if(fingerpoints_2f.size()==ftips.size()){
+        cout<<"here"<<endl;
+        solvePnPRansac(ftips, fingerpoints_2f, intrisicMat, distCoeffs, R_matrix, t_matrix, false);
+        
+			cout << R_matrix << endl;
 			//cout << t_matrix << endl;
 			//cout << P_matrix << endl;
-		}
+        }
 
 		
 
