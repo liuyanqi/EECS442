@@ -3,6 +3,12 @@
 #include "PoseEstimator.h"
 #include "opencv2/calib3d/calib3d.hpp"
 
+void draw(Mat img, Point2f center, vector<Point2d> imgpts){
+    line(img, center, imgpts[1], Scalar(255,0,0),5);
+    line(img, center, imgpts[2], Scalar(0,255,0),5);
+    line(img, center, imgpts[3], Scalar(0,0,255),5);
+}
+
 int main(int argc, char** argv)
 {
 	VideoCapture VideoStream(CV_CAP_ANY);
@@ -101,15 +107,10 @@ int main(int argc, char** argv)
 		}
 
 		vector<Point3d> object;
-		object.push_back(Point3d(0, 0, 10));
-		object.push_back(Point3d(0, 0, 20));
-		object.push_back(Point3d(0, 0, 30));
-		object.push_back(Point3d(0, 10, 0));
-		object.push_back(Point3d(0, 20, 0));
-		object.push_back(Point3d(0, 30, 0));
-		object.push_back(Point3d(10, 0, 0));
-		object.push_back(Point3d(20, 0, 0));
-		object.push_back(Point3d(30, 0, 0));
+		object.push_back(Point3d(0, 0, 0));
+		object.push_back(Point3d(50, 0, 0));
+		object.push_back(Point3d(0, 50, 0));
+		object.push_back(Point3d(0, 0, 50));
 
 		PoseEstimator Pose;
 		Pose.UpdateProjectionMatrix(FingerPoints);
@@ -122,11 +123,11 @@ int main(int argc, char** argv)
 			circle(Frame, cvPoint(FingerPoints[3].x, FingerPoints[3].y), 5, CV_RGB(0, 0, 255), -1, 8, 0);
 			circle(Frame, cvPoint(FingerPoints[4].x, FingerPoints[4].y), 5, CV_RGB(255, 0, 0), -1, 8, 0);
 		}
-
+        
 		if (!ImageCoordinates.empty()) {
-			for (auto& Pt : ImageCoordinates)
-				circle(Frame, cvPoint(Pt.x, Pt.y), 3, CV_RGB(0, 0, 255), -1, 8, 0);
+			 draw(Frame, ImageCoordinates[0], ImageCoordinates);
 		}
+        
 		//circle(Frame, cvPoint(Thumb.x, Thumb.y), 5, CV_RGB(0, 0, 255), -1, 8, 0);
 
 		imshow("thresh", Threshold);
