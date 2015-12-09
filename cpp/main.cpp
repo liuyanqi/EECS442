@@ -3,10 +3,30 @@
 #include "PoseEstimator.h"
 #include "opencv2/calib3d/calib3d.hpp"
 
-void draw(Mat img, Point2f center, vector<Point2d> imgpts){
-    line(img, center, imgpts[1], Scalar(255,0,0),5);
-    line(img, center, imgpts[2], Scalar(0,255,0),5);
-    line(img, center, imgpts[3], Scalar(0,0,255),5);
+void draw(Mat img, vector<Point2d> imgpts){
+    line(img, imgpts[0], imgpts[1], Scalar(255, 0, 0), 5);
+	line(img, imgpts[0], imgpts[2], Scalar(255, 0, 0), 5);
+	line(img, imgpts[0], imgpts[4], Scalar(255, 0, 0), 5);
+	line(img, imgpts[1], imgpts[5], Scalar(255, 0, 0), 5);
+	line(img, imgpts[1], imgpts[3], Scalar(255, 0, 0), 5);
+	line(img, imgpts[2], imgpts[3], Scalar(255, 0, 0), 5);
+	line(img, imgpts[2], imgpts[6], Scalar(255, 0, 0), 5);
+	line(img, imgpts[3], imgpts[7], Scalar(255, 0, 0), 5);
+	line(img, imgpts[4], imgpts[6], Scalar(255, 0, 0), 5);
+	line(img, imgpts[4], imgpts[5], Scalar(255, 0, 0), 5);
+	line(img, imgpts[5], imgpts[7], Scalar(255, 0, 0), 5);
+	line(img, imgpts[6], imgpts[7], Scalar(255, 0, 0), 5);
+}
+
+bool check_thresh(const vector<Point>& a, const vector<Point>& b, double thresh) {
+	if (a.size() != b.size()) return false;
+
+	for (int i = 0; i < a.size(); i++) {
+		if (norm(b[i] - a[i]) > thresh)
+			return false;
+	}
+
+	return true;
 }
 
 int main(int argc, char** argv)
@@ -17,6 +37,35 @@ int main(int argc, char** argv)
 		cout << "Error: Unable to open webcam.";
 		return 1;
 	}
+
+	bool tracking = false;
+	bool tracking_enabled = false;
+	int valid_frames = 0;
+	vector<Point> previous_tips;
+	double thresh = 100;
+	int valid_start_count = 3;
+	int max_valid_count = 20;
+
+	vector<Point3d> object;
+	object.push_back(Point3d(0, 0, 0));
+	object.push_back(Point3d(50, 0, 0));
+	object.push_back(Point3d(0, 50, 0));
+	object.push_back(Point3d(50, 50, 0));
+	object.push_back(Point3d(0, 0, 50));
+	object.push_back(Point3d(50, 0, 50));
+	object.push_back(Point3d(0, 50, 50));
+	object.push_back(Point3d(50, 50, 50));
+
+	/*
+	object.push_back(Point3d(0, 0, 0));
+	object.push_back(Point3d(50, 0, 0));
+	object.push_back(Point3d(0, 50, 0));
+	object.push_back(Point3d(0, 0, 50));
+	*/
+
+	int frame_width = VideoStream.get(CV_CAP_PROP_FRAME_WIDTH);
+	int frame_height = VideoStream.get(CV_CAP_PROP_FRAME_HEIGHT);
+	VideoWriter video("out.avi", CV_FOURCC('M', 'J', 'P', 'G'), 10, Size(frame_width, frame_height), true);
 
 	while (true) {
 		Mat Frame;
@@ -87,7 +136,7 @@ int main(int argc, char** argv)
 		sort(Distances.begin(), Distances.end(), ComparePoints);
 
 		for (int i = 0; i < Distances.size(); i++){
-			if (FingerPoints.size() == 5 || Distances[i].second > 2000) break;
+			if (FingerPoints.size() == 5 || Distances[i].second > 50) break;
 			if (Distances[i].first.y > 450 || Distances[i].first.x < 20 || Distances[i].first.x > 620) continue;
 			FingerPoints.push_back(Distances[i].first);
 		}
@@ -106,36 +155,88 @@ int main(int argc, char** argv)
 			FingerPoints[i] = OrderedFingers[i].first;
 		}
 
-		vector<Point3d> object;
-		object.push_back(Point3d(0, 0, 0));
-		object.push_back(Point3d(50, 0, 0));
-		object.push_back(Point3d(0, 50, 0));
-		object.push_back(Point3d(0, 0, 50));
 
-		PoseEstimator Pose;
-		Pose.UpdateProjectionMatrix(FingerPoints);
-		vector<Point2d> ImageCoordinates = Pose.GetImageCoordinates(object);
+		if (tracking_enabled) {
+			if (tracking) {
+				if (FingerPoints.size() != 5) {
+					valid_frames--;
+					if (valid_frames == 0) {
+						tracking = false;
+					}
+				}
+				else {
+					bool below_thresh = check_thresh(FingerPoints, previous_tips, thresh);
+					if (below_thresh) {
+						previous_tips = FingerPoints;
+						if (valid_frames < max_valid_count) valid_frames += 2;
+					}
+					else {
+						valid_frames--;
+						if (valid_frames == 0) {
+							tracking = false;
+						}
+					}
+				}
+			}
+			else {
+				if (FingerPoints.size() != 5) {
+					valid_frames = 0;
+				}
+				else {
+					if (valid_frames == 0) {
+						previous_tips = FingerPoints;
+						valid_frames++;
+						
+					}
+					else {
+						bool below_thresh = check_thresh(FingerPoints, previous_tips, thresh);
+						if (below_thresh) {
+							previous_tips = FingerPoints;
+							valid_frames++;
+							if (valid_frames == valid_start_count) {
+								tracking = true;
+								valid_frames = max_valid_count;
+							}
+						}
+						else {
+							valid_frames = 0;
+						}
+					}
 
-		if (FingerPoints.size() == 5) {
-			circle(Frame, cvPoint(FingerPoints[0].x, FingerPoints[0].y), 5, CV_RGB(0, 128, 0), -1, 8, 0);
-			circle(Frame, cvPoint(FingerPoints[1].x, FingerPoints[1].y), 5, CV_RGB(0, 255, 0), -1, 8, 0);
-			circle(Frame, cvPoint(FingerPoints[2].x, FingerPoints[2].y), 5, CV_RGB(0, 0, 128), -1, 8, 0);
-			circle(Frame, cvPoint(FingerPoints[3].x, FingerPoints[3].y), 5, CV_RGB(0, 0, 255), -1, 8, 0);
-			circle(Frame, cvPoint(FingerPoints[4].x, FingerPoints[4].y), 5, CV_RGB(255, 0, 0), -1, 8, 0);
+
+				}
+			}
 		}
-        
-		if (!ImageCoordinates.empty()) {
-			 draw(Frame, ImageCoordinates[0], ImageCoordinates);
+		
+		if (tracking) {
+			PoseEstimator Pose;
+			Pose.UpdateProjectionMatrix(previous_tips);
+			vector<Point2d> ImageCoordinates = Pose.GetImageCoordinates(object);
+
+			circle(Frame, cvPoint(previous_tips[0].x, previous_tips[0].y), 5, CV_RGB(0, 128, 0), -1, 8, 0);
+			circle(Frame, cvPoint(previous_tips[1].x, previous_tips[1].y), 5, CV_RGB(0, 255, 0), -1, 8, 0);
+			circle(Frame, cvPoint(previous_tips[2].x, previous_tips[2].y), 5, CV_RGB(0, 0, 128), -1, 8, 0);
+			circle(Frame, cvPoint(previous_tips[3].x, previous_tips[3].y), 5, CV_RGB(0, 0, 255), -1, 8, 0);
+			circle(Frame, cvPoint(previous_tips[4].x, previous_tips[4].y), 5, CV_RGB(255, 0, 0), -1, 8, 0);
+
+			if (!ImageCoordinates.empty()) {
+				draw(Frame, ImageCoordinates);
+			}
 		}
         
 		//circle(Frame, cvPoint(Thumb.x, Thumb.y), 5, CV_RGB(0, 0, 255), -1, 8, 0);
-
+		cout << valid_frames << endl;
 		imshow("thresh", Threshold);
 		imshow("Webcam", Frame);
+		video.write(Frame);
+
+		
 
 		int key = cvWaitKey(10);
 		if (char(key) == 27)
 			break;      // Break if ESC is pressed
+		if (char(key) == 't')
+			tracking_enabled = true;
 	}
 
 	return 0;
